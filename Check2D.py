@@ -176,7 +176,7 @@ if __name__=='__main__':
 
         kwargs = {'num_workers': 1, 'pin_memory': True} if torch.cuda.is_available() else {}
 
-        G = Generator.to(device)
+        G = Generator_4L.to(device)
         G.load_state_dict(torch.load(G_restore_pkl_path))
         logger.info('Start checking...  VAE model load state:')
         logger.info(G_restore_pkl_path)
