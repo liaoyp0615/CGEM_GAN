@@ -43,8 +43,12 @@ def get_parser():
                         help='outfile file paths')
     parser.add_argument('--num_check', action='store', type=int, default=1500,
                         help='number of checked data')
+    parser.add_argument('--noise_dim', action='store', type=int, default=512,
+                        help='dimension of noise')
     return parser
 
+def get_noise_sampler():
+    return lambda m, n: torch.rand(m, n).requires_grad_()
 
 def check_fake_data(model, device, num_check, datafile):
     model.eval()
@@ -132,7 +136,7 @@ def plot_all_info():
     plt.legend()
     ## histogram
     noise = noiseSam(1, noise_dim)
-    tmp = model(noise.to(device))
+    tmp = G(noise.to(device))
     tmp = tmp.detach().cpu().numpy()
     tmp = tmp.reshape(92,92)
     _x,_z,_sum = tmp.sum(1), tmp.sum(0), tmp.sum(0).sum(0)
@@ -160,6 +164,7 @@ if __name__=='__main__':
         num_check = parse_args.num_check
         G_restore_pkl_path = parse_args.G_restore_pkl_path
         outfile = parse_args.outfile
+        noise_dim = parse_args.noise_dim
 
         # --- set up all the logging stuff
         formatter = logging.Formatter(
@@ -176,7 +181,8 @@ if __name__=='__main__':
 
         kwargs = {'num_workers': 1, 'pin_memory': True} if torch.cuda.is_available() else {}
 
-        G = Generator_4L.to(device)
+        noiseSam=get_noise_sampler()
+        G = Generator_4L(noise_dim).to(device)
         G.load_state_dict(torch.load(G_restore_pkl_path))
         logger.info('Start checking...  VAE model load state:')
         logger.info(G_restore_pkl_path)

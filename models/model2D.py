@@ -32,14 +32,29 @@ class Discriminator_4L(nn.Module):
                     nn.Conv2d(48,64,3,1,0), #8->2
                     nn.LeakyReLU(),
                     )
-        self.out = nn.Linear(64*2*2,1)
+        self.out = nn.Linear(64*2*2+5,1)
         T_init = torch.randn(64*2*2, 64*16) # B=128, C=16
         self.T = nn.Parameter(T_init, requires_grad=True)
         self.out_minidisc = nn.Linear(64*2*2 + 64, 1)
 
+    def cal_label(self,x): #(n,1,92,92,92)  # can copy
+        x = x.view(x.shape[0],92,92)
+        _x,_z = x.sum(2),x.sum(1)
+        cut_x,cut_z = _x[:,1:91], _z[:,1:91]
+        _sum = cut_x.sum(-1) # (n,)
+        weights = torch.arange(0.5,3.5,3/90).cuda()
+        xtmp,ztmp = cut_x*weights, cut_z*weights
+        x_mean,z_mean = xtmp.sum(-1)/_sum, ztmp.sum(-1)/_sum #(n,)
+        x_std,z_std = torch.sqrt(((xtmp-x_mean.view(x_mean.shape[0],1))**2).sum(-1))/_sum, torch.sqrt(((ztmp-z_mean.view(z_mean.shape[0],1))**2).sum(-1))/_sum
+        label = torch.stack((_sum,x_mean,z_mean,x_std,z_std),1)
+        return label
+
     def forward(self, x, matching=False, minidisc=False):
+        label = self.cal_label(x) # 5
         x = self.conv(x)
         feature = x.view(x.size(0),-1)
+        feature = torch.cat((feature,label),-1)
+        #print("feature shape:",feature.shape)
         x = feature
 
         if minidisc:
