@@ -24,18 +24,25 @@ class Discriminator_4L(nn.Module):
         super(Discriminator_4L, self).__init__()
         self.conv = nn.Sequential(
                     nn.Conv2d(1,16,6,2,0), # 92->44
-                    nn.LeakyReLU(),
-                    nn.Conv2d(16,32,5,3,0), #44->20
-                    nn.LeakyReLU(),
-                    nn.Conv2d(32,48,5,3,0), #20->8
-                    nn.LeakyReLU(),
-                    nn.Conv2d(48,64,3,1,0), #8->2
-                    nn.LeakyReLU(),
+                    nn.Softplus(),
+                    #nn.BatchNorm2d(16),
+                    nn.Conv2d(16,32,5,3,0), #44->14
+                    nn.Softplus(),
+                    #nn.BatchNorm2d(32),
+                    nn.Conv2d(32,64,5,3,0), #14->4
+                    nn.Softplus(),
+                    #nn.BatchNorm2d(64),
+                    nn.Conv2d(64,128,4,1,0), #4->1
+                    nn.ReLU(),
                     )
-        self.out = nn.Linear(64*2*2+5,1)
-        T_init = torch.randn(64*2*2, 64*16) # B=128, C=16
+        self.out = nn.Sequential(
+                   nn.Linear(128*1*1+5, 1000),
+                   nn.Linear(1000, 300),
+                   nn.Linear(300, 1),
+                   )
+        T_init = torch.randn(256*1*1, 64*16) # B=128, C=16
         self.T = nn.Parameter(T_init, requires_grad=True)
-        self.out_minidisc = nn.Linear(64*2*2 + 64, 1)
+        self.out_minidisc = nn.Linear(256*1*1 + 64, 1)
 
     def cal_label(self,x): #(n,1,92,92,92)  # can copy
         x = x.view(x.shape[0],92,92)
@@ -56,6 +63,7 @@ class Discriminator_4L(nn.Module):
         feature = torch.cat((feature,label),-1)
         #print("feature shape:",feature.shape)
         x = feature
+        print(x)
 
         if minidisc:
             T = self.T
@@ -91,12 +99,12 @@ class Generator_4L(nn.Module):
         "Out = (In + 2*Padding - k)/stride + 1"
         super(Generator_4L, self).__init__()
         self.linear = nn.Sequential(
-                    nn.Linear(noise_dim, 2048),
+                    nn.Linear(noise_dim, 3000),
                     nn.ReLU(),
-                    #nn.BatchNorm1d(1024),
-                    nn.Linear(2048, 2*2*128),
+                    #nn.BatchNorm1d(3000),
+                    nn.Linear(3000, 2*2*128),
                     nn.ReLU(),
-                    #nn.BatchNorm1d(4*4*4*24)
+                    #nn.BatchNorm1d(2*2*128)
                     )
         self.inconv = nn.Sequential(
                     nn.ConvTranspose2d(128,64,3,1,0),
@@ -106,7 +114,8 @@ class Generator_4L(nn.Module):
                     nn.ConvTranspose2d(32,16,5,3,0),
                     nn.ReLU(),
                     nn.ConvTranspose2d(16,1,6,2,0),
-                    Act_op()
+                    Act_op(),
+                    #nn.ReLU(),
                     )
 
     def forward(self, x):

@@ -18,29 +18,30 @@ from models.model2D import *
 import uproot
 import random
 
-def get_noise_sampler():
-    return lambda m, n: torch.rand(m, n).requires_grad_()
+def get_noise_sampler(): # rand:uniform    randn:normal
+    return lambda m, n: torch.randn(m, n).requires_grad_()
 
 def train_D(D, G, noiseSam, device, data, d_optimizer, epoch, batchsize, noise_dim, Minidisc):
-        d_f_loss,d_r_loss = 0,0
         criterion = nn.BCELoss()
         d_optimizer.zero_grad()
         d_r_score = D(data)
+        print("d_r_score:",d_r_score)
         d_r_standard = torch.ones(batchsize,1)
         d_r_loss = criterion( d_r_score, d_r_standard.to(device) )  # ones = true
         d_r_loss.backward()
-        noise = noiseSam(batchsize, noise_dim )
+        noise = noiseSam( batchsize, noise_dim )
         fake_data = G( noise.to(device) )
         d_f_score = D( fake_data,minidisc=Minidisc )
+        print("d_f_score:",d_f_score)
         d_f_standard = torch.zeros(batchsize,1)
-        d_f_loss = criterion( d_f_score, d_f_standard.to(device))  # zeros = fake
+        d_f_loss = criterion(d_f_score, d_f_standard.to(device))  # zeros = fake
         d_f_loss.backward()
         d_optimizer.step()
         return d_r_loss+d_f_loss
 
 def train_G(D, G, noiseSam, device, real_data, g_optimizer, epoch, batchsize, noise_dim, feature_matching, Minidisc):
-        g_loss,g_loss_FM=0,0
         criterion = nn.BCELoss()
+        g_optimizer.zero_grad()
         noise = noiseSam(batchsize, noise_dim)
         fake_data = G( noise.to(device) )
         if feature_matching:
@@ -53,11 +54,12 @@ def train_G(D, G, noiseSam, device, real_data, g_optimizer, epoch, batchsize, no
             g_loss = g_loss + g_loss_FM
         else:
             g_score = D(fake_data,minidisc=Minidisc)
+            print("g_score:",g_score)
             g_standard = torch.ones(batchsize,1)
             g_loss = criterion( g_score, g_standard.to(device) )
         g_loss.backward()
         g_optimizer.step()
-        return g_loss
+        return g_loss.item()
 
 
 def get_parser():
@@ -168,7 +170,7 @@ def main():
         for epoch in range( 1,num_epochs+1 ):
                 for batch_idx, data in enumerate(train_loader):
                         data = torch.Tensor(data).to(device).requires_grad_()
-                        for i in range(2):
+                        for i in range(1):
                             d_loss = train_D(D, G, noiseSam, device, data, d_optimizer, epoch, batchsize, noise_dim, minidisc)
                         g_loss = train_G(D, G, noiseSam, device, data, g_optimizer, epoch, batchsize, noise_dim, feature_matching, minidisc)
                 if epoch == 1:
