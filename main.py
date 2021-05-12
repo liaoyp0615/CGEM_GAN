@@ -22,24 +22,61 @@ def get_noise_sampler(): # rand:uniform    randn:normal
     return lambda m, n: torch.randn(m, n).requires_grad_()
 
 def train_D(D, G, noiseSam, device, data, d_optimizer, epoch, batchsize, noise_dim, Minidisc):
+        d_optimizer.zero_grad()
+        d_r_score = D(data)
+        noise = noiseSam( batchsize, noise_dim )
+        fake_data = G( noise.to(device) )
+        d_f_score = D( fake_data,minidisc=Minidisc )
+        #print("d_f_score:",d_f_score)
+        # gradient panelty
+        alpha = torch.rand((batchsize,1,1,1))
+        alpha = alpha.cuda()
+        hat_data = alpha*data + (1-alpha)*fake_data #sampling zone
+        hat_data.cuda().requires_grad_()
+        d_hat_score = D(hat_data)
+
+        gradients = torch.autograd.grad(outputs=d_hat_score, inputs=hat_data,
+                    grad_outputs=torch.ones(d_hat_score.size()).cuda(),
+                    create_graph=True, retain_graph=True, only_inputs=True)[0]
+        lambda_ = 10
+        gp = lambda_*((gradients.view(gradients.size()[0], -1).norm(2, 1) - 1) ** 2).mean()
+        d_loss = -torch.mean(d_r_score) + torch.mean(d_f_score) + gp
+
+        d_loss.backward()
+
+        d_optimizer.step()
+        return d_loss
+
+def train_G(D, G, noiseSam, device, real_data, g_optimizer, epoch, batchsize, noise_dim, feature_matching, Minidisc):
+        g_optimizer.zero_grad()
+        noise = noiseSam(batchsize, noise_dim)
+        fake_data = G( noise.to(device) )
+        g_score = D(fake_data,minidisc=Minidisc)
+        #print("g_score:",g_score)
+        g_loss = -torch.mean(g_score)
+        g_loss.backward()
+        g_optimizer.step()
+        return g_loss.item()
+
+def train_D_gan(D, G, noiseSam, device, data, d_optimizer, epoch, batchsize, noise_dim, Minidisc):
         criterion = nn.BCELoss()
         d_optimizer.zero_grad()
         d_r_score = D(data)
-        print("d_r_score:",d_r_score)
+        #print("d_r_score:",d_r_score)
         d_r_standard = torch.ones(batchsize,1)
         d_r_loss = criterion( d_r_score, d_r_standard.to(device) )  # ones = true
         d_r_loss.backward()
         noise = noiseSam( batchsize, noise_dim )
         fake_data = G( noise.to(device) )
         d_f_score = D( fake_data,minidisc=Minidisc )
-        print("d_f_score:",d_f_score)
+        #print("d_f_score:",d_f_score)
         d_f_standard = torch.zeros(batchsize,1)
         d_f_loss = criterion(d_f_score, d_f_standard.to(device))  # zeros = fake
         d_f_loss.backward()
         d_optimizer.step()
         return d_r_loss+d_f_loss
 
-def train_G(D, G, noiseSam, device, real_data, g_optimizer, epoch, batchsize, noise_dim, feature_matching, Minidisc):
+def train_G_gan(D, G, noiseSam, device, real_data, g_optimizer, epoch, batchsize, noise_dim, feature_matching, Minidisc):
         criterion = nn.BCELoss()
         g_optimizer.zero_grad()
         noise = noiseSam(batchsize, noise_dim)
@@ -54,7 +91,7 @@ def train_G(D, G, noiseSam, device, real_data, g_optimizer, epoch, batchsize, no
             g_loss = g_loss + g_loss_FM
         else:
             g_score = D(fake_data,minidisc=Minidisc)
-            print("g_score:",g_score)
+            #print("g_score:",g_score)
             g_standard = torch.ones(batchsize,1)
             g_loss = criterion( g_score, g_standard.to(device) )
         g_loss.backward()
@@ -141,7 +178,7 @@ def main():
         #Set Random Seed
         torch.manual_seed(seed)
 
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(device)
 
         kwargs = {'num_workers': 1, 'pin_memory': True} if torch.cuda.is_available() else {}
@@ -164,15 +201,16 @@ def main():
                 print('restored from ',G_restore_pkl_path)
                 print('restored from ',D_restore_pkl_path)
         
-        d_optimizer = optim.Adam(D.parameters(), lr=d_learning_rate, betas=(0.5, 0.999))
-        g_optimizer = optim.Adam(G.parameters(), lr=g_learning_rate, betas=(0.5, 0.999))
+        d_optimizer = optim.RMSprop(D.parameters(), lr=d_learning_rate)
+        g_optimizer = optim.RMSprop(G.parameters(), lr=g_learning_rate)
         
         for epoch in range( 1,num_epochs+1 ):
                 for batch_idx, data in enumerate(train_loader):
                         data = torch.Tensor(data).to(device).requires_grad_()
                         for i in range(1):
                             d_loss = train_D(D, G, noiseSam, device, data, d_optimizer, epoch, batchsize, noise_dim, minidisc)
-                        g_loss = train_G(D, G, noiseSam, device, data, g_optimizer, epoch, batchsize, noise_dim, feature_matching, minidisc)
+                        for i in range(1):
+                            g_loss = train_G(D, G, noiseSam, device, data, g_optimizer, epoch, batchsize, noise_dim, feature_matching, minidisc)
                 if epoch == 1:
                         logger.info("1 epoch completed! This code is running successfully!")
                 if epoch%(num_epochs//10)==0:
