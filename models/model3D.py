@@ -38,29 +38,17 @@ class Discriminator_9L(nn.Module):
         self.T = nn.Parameter(T_init, requires_grad=True)
         self.out_minidisc = nn.Linear(128*1*1*1 + 64, 1)
 
-
     def cal_label(self,x): #(n,1,92,92,92)  # can copy
-        x = x.reshape(x.shape(0),92,92,92)
-        _t = x.sum(1).sum(1) # t direction distribution
-        _x = x.sum(-1).sum(-1) # x direction distribution
-        _z = x.sum(1).sum(-1) # z direction distribution  (n,92)
-        print('_x:',_x)
-        cut_x,cut_z,cut_t = _x(:,1:91), _z(:,1:91), _t(:,1:91)
-        print(cut_x.shape)
+        x = x.view(x.shape[0],92,92,92)
+        _x,_z,_t = x.sum(-1).sum(-1), x.sum(1).sum(-1), x.sum(1).sum(1)
+        cut_x,cut_z,cut_t = _x[:,1:91], _z[:,1:91], _t[:,1:91]
         _sum = cut_x.sum(-1) # (n,)
-        print('_sum:',_sum)
-        weights = np.arange(0.5,3.5,3/90).reshape(x.shape(0),90)
-        print('weights:',weights)
+        weights = torch.arange(0.5,3.5,3/90).cuda()
         xtmp,ztmp,ttmp = cut_x*weights, cut_z*weights, cut_t*weights
-        print('xtmp.shape:',xtmp.shape)
         x_mean,z_mean,t_mean = xtmp.sum(-1)/_sum, ztmp.sum(-1)/_sum, ttmp.sum(-1)/_sum #(n,)
-        print('x_mean.shape',x_mean.shape)
-        print('x_mean',x_mean)
-        x_std = /_sum
-        x_std,z_std,t_std = np.sqrt(((xtmp-x_mean)**2).sum(-1))/_sum, np.sqrt(((ztmp-z_mean)**2).sum(-1))/_sum, np.sqrt(((ttmp-t_mean)**2).sum(-1))/_sum
-        lable = torch.cat((_sum,x_mean,z_mean,t_mean,x_std,z_std,t_std),-1)
+        x_std,z_std,t_std = torch.sqrt(((xtmp-x_mean.view(x_mean.shape[0],1))**2).sum(-1))/_sum, torch.sqrt(((ztmp-z_mean.view(z_mean.shape[0],1))**2).sum(-1))/_sum, torch.sqrt(((ttmp-t_mean.view(t_mean.shape[0],1))**2).sum(-1))/_sum
+        label = torch.stack((_sum,x_mean,z_mean,t_mean,x_std,z_std,t_std),1)
         return label
-
 
     def forward(self, x, matching=False, minidisc=False, wgan=False):
         label = cal_label(x)

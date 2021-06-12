@@ -15,12 +15,12 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 import numpy as np
 from torch.utils.data.dataset import Dataset
-from dataset import *
+from datasets.dataset_1D import *
 from models.model1D import *
 import uproot
 import random
 
-def get_noise_sampler(): # rand:uniform    randn:normal
+def get_noise_sampler(): # rand:uniform  randn:normal
     return lambda m, n: torch.randn(m, n).requires_grad_()
 
 def train_D(D, G, noiseSam, device, data, d_optimizer, epoch, batchsize, noise_dim, Minidisc):
@@ -28,10 +28,10 @@ def train_D(D, G, noiseSam, device, data, d_optimizer, epoch, batchsize, noise_d
         d_r_score = D(data)
         noise = noiseSam( batchsize, noise_dim )
         fake_data = G( noise.to(device) )
-        d_f_score = D( fake_data,minidisc=Minidisc )
+        d_f_score = D( fake_data )
         #print("d_f_score:",d_f_score)
         # gradient panelty
-        alpha = torch.randn((batchsize,1,1,1))
+        alpha = torch.randn((batchsize,1))
         alpha = alpha.cuda()
         #print("alpha=",alpha.shape)
         #print("data=",data.shape)
@@ -56,7 +56,7 @@ def train_G(D, G, noiseSam, device, real_data, g_optimizer, epoch, batchsize, no
         g_optimizer.zero_grad()
         noise = noiseSam(batchsize, noise_dim)
         fake_data = G( noise.to(device) )
-        g_score = D(fake_data,minidisc=Minidisc)
+        g_score = D(fake_data)
         #print("g_score:",g_score)
         g_loss = -torch.mean(g_score)
         g_loss.backward()
@@ -73,7 +73,7 @@ def train_D_gan(D, G, noiseSam, device, data, d_optimizer, epoch, batchsize, noi
         d_r_loss.backward()
         noise = noiseSam( batchsize, noise_dim )
         fake_data = G( noise.to(device) )
-        d_f_score = D( fake_data,minidisc=Minidisc )
+        d_f_score = D( fake_data )
         #print("d_f_score:",d_f_score)
         d_f_standard = torch.zeros(batchsize,1)
         d_f_loss = criterion(d_f_score, d_f_standard.to(device))  # zeros = fake
@@ -86,19 +86,10 @@ def train_G_gan(D, G, noiseSam, device, real_data, g_optimizer, epoch, batchsize
         g_optimizer.zero_grad()
         noise = noiseSam(batchsize, noise_dim)
         fake_data = G( noise.to(device) )
-        if feature_matching:
-            r_feature, _       = D( real_data,matching=True,minidisc=Minidisc )
-            f_feature, g_score = D( fake_data,matching=True,minidisc=Minidisc )
-            r_feature = torch.mean(r_feature,0)
-            f_feature = torch.mean(f_feature,0)
-            criterionG = nn.MSELoss()
-            g_loss_FM = criterionG(f_feature,r_feature)
-            g_loss = g_loss + g_loss_FM
-        else:
-            g_score = D(fake_data,minidisc=Minidisc)
-            #print("g_score:",g_score)
-            g_standard = torch.ones(batchsize,1)
-            g_loss = criterion( g_score, g_standard.to(device) )
+        g_score = D(fake_data)
+        #print("g_score:",g_score)
+        g_standard = torch.ones(batchsize,1)
+        g_loss = criterion( g_score, g_standard.to(device) )
         g_loss.backward()
         g_optimizer.step()
         return g_loss.item()
@@ -225,18 +216,19 @@ def main():
                 for batch_idx, data in enumerate(train_loader):
                         data = torch.Tensor(data).to(device).requires_grad_()
                         for i in range(1):
-                            d_loss = train_D(D, G, noiseSam, device, data, d_optimizer, epoch, batchsize, noise_dim, minidisc)
+                            d_loss = train_D_gan(D, G, noiseSam, device, data, d_optimizer, epoch, batchsize, noise_dim, minidisc)
                         for i in range(1):
-                            g_loss = train_G(D, G, noiseSam, device, data, g_optimizer, epoch, batchsize, noise_dim, feature_matching, minidisc)
+                            g_loss = train_G_gan(D, G, noiseSam, device, data, g_optimizer, epoch, batchsize, noise_dim, feature_matching, minidisc)
                 if epoch == 1:
                         logger.info("1 epoch completed! This code is running successfully!")
                 if epoch%(num_epochs//10)==0:
                         logger.info( "Epoch %6d. D_Loss %5.3f. G_Loss %5.3f." % ( epoch, d_loss, g_loss ) )
-                if epoch%200==0:
+                if epoch%10==0:
                         torch.save(D.state_dict(), D_pkl_path)
                         #torch.save(G.state_dict(), G_pkl_path)
                         G = G.eval()
-                        resG = torch.jit.trace(model,torch.rand(1,1,92))
+                        example = noiseSam( 1, noise_dim )
+                        resG = torch.jit.trace(G, example.to(device) )
                         resG.save(G_pkl_path)
                         logger.info('Model save into:')
                         logger.info(G_pkl_path)

@@ -105,12 +105,13 @@ class Generator_4L(nn.Module):
         self.linear = nn.Sequential(
                     nn.Linear(noise_dim,2000),
                     nn.ReLU(),
-                    #nn.BatchNorm1d(3000),
+                    nn.BatchNorm1d(2000),
                     nn.Linear(2000,1000),
                     nn.ReLU(),
+                    nn.BatchNorm1d(1000),
                     nn.Linear(1000, 2*2*256),
                     nn.ReLU(),
-                    #nn.BatchNorm1d(2*2*128)
+                    nn.BatchNorm1d(2*2*256)
                     )
         self.inconv = nn.Sequential(
                     nn.ConvTranspose2d(256,128,3,1,0), #4

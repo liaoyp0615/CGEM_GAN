@@ -1,4 +1,5 @@
 # File to load histogram data
+# only load gained electrons
 
 from __future__ import print_function
 import numpy as np
@@ -22,11 +23,11 @@ class HistoDataset(Dataset):
         i=0
         while(i<self.num):
             k = random.randint( 0, len(f.keys())-1 ) # randint includes min and max.
-            h2_name = 'h2_'+str(k)
-            tmp = f[h2_name]
-            if max(tmp)!=0:
-                tmp = np.asarray(tmp).reshape(1,92,92)
-                histograms.append(tmp)
+            h1_name = 'h1_'+str(k)
+            tmp = f[h1_name]
+            if max(tmp)!=0 :
+                tmp = np.asarray(tmp)
+                histograms.append(tmp.sum()) #input gained electrons
                 i+=1
             else:
                 continue
@@ -35,12 +36,12 @@ class HistoDataset(Dataset):
  
     def __getitem__(self, index):
         hist = self.histograms[index]
-        hist = np.asarray(hist).astype(int)
+        hist = np.asarray(hist).astype(int).reshape(1,1)
         hist = torch.Tensor(hist)
         return hist
     
     def load_data(self):
-        data = np.asarray(self.histograms).reshape(self.num,1,92,92)
+        data = np.asarray(self.histograms)
         data = torch.Tensor(data)
         return data
 
